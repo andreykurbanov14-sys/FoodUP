@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>foodUP</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: #050508; --glass-bg: rgba(255, 255, 255, 0.04); --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-highlight: rgba(255, 255, 255, 0.15); --primary: #7d5fff; --success: #00e676;
+            --danger: #ff3d71; --gold: #ffaa00; --ton: #0098ea; --text: #ffffff; --text-muted: #8a8a9e;
+            --blur: 24px; --radius: 24px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; height: 100vh; height: 100dvh; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        #app-container { width: 100%; max-width: 480px; height: 100%; position: relative; display: flex; flex-direction: column; background: linear-gradient(180deg, #12121a 0%, #050508 100%); overflow: hidden; z-index: 1; }
+        @media (min-width: 481px) { #app-container { height: 90vh; border-radius: 40px; border: 1px solid var(--glass-border); box-shadow: 0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 var(--glass-highlight); } }
+        
+        /* FX Canvas */
+        #fx-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+        .flash-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; opacity: 0; transition: opacity 0.1s; }
+        .flash-active { animation: flashAnim 0.6s ease-out; }
+        @keyframes flashAnim { 0% { opacity: 0.8; background: var(--success); } 100% { opacity: 0; } }
+        .flash-lose { animation: flashLose 0.6s ease-out; }
+        @keyframes flashLose { 0% { opacity: 0.5; background: var(--danger); } 100% { opacity: 0; } }
+
+        #food-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; opacity: 0.3; }
+        .falling-item { position: absolute; top: -50px; animation: fall linear infinite; font-size: 24px; filter: blur(1px); }
+        @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+        header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; background: rgba(18, 18, 26, 0.6); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); z-index: 10; border-bottom: 1px solid var(--glass-border); }
+        .logo { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; text-shadow: 0 0 20px rgba(125, 95, 255, 0.3); }
+        .logo-food { color: #fff; } .logo-up { color: var(--primary); }
+        .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.1); box-shadow: 0 0 10px rgba(125,95,255,0.2); }
+        .status-dot { font-size: 9px; color: var(--success); display: block; margin-top: 2px; font-weight: 600; }
+        .balance-capsule { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 6px 8px 6px 14px; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px); box-shadow: inset 0 1px 0 var(--glass-highlight); }
+        .coin-icon { width: 16px; height: 16px; fill: var(--gold); filter: drop-shadow(0 0 4px var(--gold)); }
+        .balance-val { font-weight: 700; color: var(--gold); font-size: 14px; min-width: 30px; }
+        .btn-plus { background: var(--primary); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 12px rgba(125, 95, 255, 0.4); transition: transform 0.2s; }
+        .btn-plus:active { transform: scale(0.9); }
+        main { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; position: relative; z-index: 2; scroll-behavior: smooth; }
+        main::-webkit-scrollbar { width: 0; }
+        .view { display: none; animation: iosFade 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+        .view.active { display: block; }
+        @keyframes iosFade { from { opacity: 0; transform: translateY(15px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .glass-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); box-shadow: 0 8px 32px rgba(0,0,0,0.2), inset 0 1px 0 var(--glass-highlight); transition: transform 0.2s, box-shadow 0.2s; position: relative; overflow: hidden; }
+        .glass-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); }
+        .glass-card:active { transform: scale(0.98); }
+        .game-row { display: flex; align-items: center; gap: 16px; cursor: pointer; }
+        .game-icon { width: 52px; height: 52px; background: rgba(255,255,255,0.05); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 28px; border: 1px solid rgba(255,255,255,0.05); box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+        .game-details { flex: 1; }
+        .game-title { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        .tag { font-size: 9px; padding: 3px 6px; border-radius: 6px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+        .tag.hot { background: rgba(255, 61, 113, 0.15); color: var(--danger); border: 1px solid rgba(255,61,113,0.3); }
+        .tag.top { background: rgba(125, 95, 255, 0.15); color: var(--primary); border: 1px solid rgba(125,95,255,0.3); }
+        .tag.new { background: rgba(0, 230, 118, 0.15); color: var(--success); border: 1px solid rgba(0,230,118,0.3); }
+        .game-desc { font-size: 13px; color: var(--text-muted); margin-top: 4px; font-weight: 500; }
+        .play-arrow { color: var(--text-muted); font-size: 20px; font-weight: 300; }
+        .arena-header { display: flex; align-items: center; margin-bottom: 24px; gap: 12px; }
+        .back-btn { background: var(--glass-bg); border: 1px solid var(--glass-border); color: var(--text); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; backdrop-filter: blur(10px); }
+        .arena-title { font-size: 20px; font-weight: 700; }
+        .game-stage { background: rgba(0,0,0,0.3); border-radius: 32px; padding: 30px; text-align: center; min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 24px; border: 1px solid var(--glass-border); box-shadow: inset 0 10px 30px rgba(0,0,0,0.5); position: relative; overflow: hidden; }
+        .emoji-display { font-size: 72px; margin-bottom: 16px; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.5)); }
+        .shake { animation: iosShake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes iosShake { 10%, 90% { transform: translate3d(-2px, 0, 0) rotate(-1deg); } 20%, 80% { transform: translate3d(4px, 0, 0) rotate(1deg); } 30%, 50%, 70% { transform: translate3d(-8px, 0, 0) rotate(-2deg); } 40%, 60% { transform: translate3d(8px, 0, 0) rotate(2deg); } }
+        .result-text { font-size: 28px; font-weight: 800; margin-top: 10px; text-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        .win { color: var(--success); text-shadow: 0 0 20px rgba(0, 230, 118, 0.4); }
+        .lose { color: var(--danger); text-shadow: 0 0 20px rgba(255, 61, 113, 0.4); }
+        input[type="number"], input[type="text"], select { background: rgba(0,0,0,0.4); border: 1px solid var(--glass-border); color: white; padding: 16px; border-radius: 16px; width: 100%; font-size: 16px; font-weight: 500; backdrop-filter: blur(5px); transition: border-color 0.2s; }
+        input:focus, select:focus { border-color: var(--primary); }
+        .action-btn { width: 100%; padding: 16px; border-radius: 16px; border: none; font-weight: 700; font-size: 16px; cursor: pointer; background: linear-gradient(135deg, var(--primary), #5a3de8); color: white; box-shadow: 0 8px 24px rgba(125, 95, 255, 0.3); transition: transform 0.1s, opacity 0.2s; letter-spacing: 0.3px; }
+        .action-btn:active { transform: scale(0.97); }
+        .action-btn:disabled { opacity: 0.4; transform: none; cursor: not-allowed; }
+        .secondary-btn { background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: none; margin-top: 12px; }
+        .slots-row { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; }
+        .slot-reel { width: 70px; height: 90px; background: rgba(0,0,0,0.6); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 40px; border: 1px solid var(--glass-border); box-shadow: inset 0 4px 12px rgba(0,0,0,0.8); }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; margin-bottom: 20px; }
+        .grid-cell { aspect-ratio: 1; background: rgba(255,255,255,0.05); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; cursor: pointer; border: 1px solid var(--glass-border); transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+        .grid-cell:active { transform: scale(0.95); }
+        .profile-card { text-align: center; margin-bottom: 24px; padding: 30px 20px; }
+        .profile-avatar { width: 90px; height: 90px; border-radius: 50%; border: 3px solid var(--primary); margin-bottom: 12px; box-shadow: 0 0 30px rgba(125,95,255,0.4); }
+        .badge { display: inline-block; background: rgba(0, 152, 234, 0.15); color: var(--ton); font-size: 11px; padding: 6px 12px; border-radius: 20px; margin-top: 8px; font-weight: 600; border: 1px solid rgba(0,152,234,0.3); }
+        .stats-row { display: flex; justify-content: space-around; padding: 20px; margin-bottom: 20px; }
+        .stat-item { text-align: center; }
+        .stat-val { font-size: 24px; font-weight: 800; color: var(--text); }
+        .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+        .bonus-card { background: linear-gradient(135deg, rgba(125,95,255,0.2), rgba(0,0,0,0.4)); padding: 30px; text-align: center; border: 1px solid rgba(125,95,255,0.3); }
+        .payment-methods { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .pay-card { background: var(--glass-bg); padding: 20px 10px; border-radius: 20px; text-align: center; cursor: pointer; border: 1px solid var(--glass-border); transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .pay-card:active { transform: scale(0.95); border-color: var(--primary); }
+        .pay-icon { font-size: 28px; margin-bottom: 4px; }
+        .pay-title { font-weight: 700; font-size: 16px; }
+        .pay-sub { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+        .tg-star { color: #FFD700; filter: drop-shadow(0 0 8px rgba(255,215,0,0.5)); font-size: 32px; }
+        .tg-ton { width: 32px; height: 32px; background: var(--ton); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px; color: white; box-shadow: 0 0 15px rgba(0,152,234,0.5); }
+        nav { position: absolute; bottom: 0; left: 0; width: 100%; height: 80px; padding-bottom: env(safe-area-inset-bottom); background: rgba(10, 10, 15, 0.7); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); border-top: 1px solid var(--glass-border); display: flex; justify-content: space-around; align-items: center; z-index: 20; }
+        .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-muted); font-size: 10px; font-weight: 600; cursor: pointer; transition: color 0.2s; padding: 8px; }
+        .nav-item.active { color: var(--primary); }
+        .nav-icon { font-size: 24px; }
+        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 400px; pointer-events: none; }
+        .toast { background: rgba(20, 20, 30, 0.8); border: 1px solid var(--glass-border); color: white; padding: 14px 20px; border-radius: 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); animation: slideDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); backdrop-filter: blur(20px); font-weight: 500; }
+        @keyframes slideDown { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        /* GREED GAME STYLES */
+        .greed-circle { width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, var(--primary) 0%, #2a1a4a 100%); display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; color: white; cursor: pointer; box-shadow: 0 0 40px rgba(125, 95, 255, 0.4); transition: transform 0.1s, background 0.3s; margin-bottom: 20px; border: 2px solid rgba(255,255,255,0.2); }
+        .greed-circle:active { transform: scale(0.9); }
+        .greed-circle.pulse { animation: greedPulse 0.6s infinite alternate; }
+        @keyframes greedPulse { from { box-shadow: 0 0 20px rgba(125, 95, 255, 0.4); transform: scale(1); } to { box-shadow: 0 0 60px rgba(125, 95, 255, 0.8); transform: scale(1.05); } }
+        .greed-info { font-size: 14px; color: var(--text-muted); margin-bottom: 10px; font-weight: 600; }
+        .greed-multiplier { font-size: 32px; font-weight: 800; color: var(--gold); margin-bottom: 20px; text-shadow: 0 0 15px rgba(255, 170, 0, 0.5); }
+
+        /* EXCHANGE STYLES */
+        .exchange-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .ticker-wrap { overflow: hidden; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 8px 0; margin-bottom: 15px; border: 1px solid var(--glass-border); }
+        .ticker { display: flex; gap: 20px; animation: tickerScroll 30s linear infinite; white-space: nowrap; }
+        @keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .ticker-item { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+        .ticker-up { color: var(--success); }
+        .ticker-down { color: var(--danger); }
+        canvas#chart { width: 100%; height: 150px; background: rgba(0,0,0,0.4); border-radius: 16px; border: 1px solid var(--glass-border); margin-bottom: 15px; }
+        .trade-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .trade-btn { padding: 12px; border-radius: 12px; border: none; font-weight: 700; color: white; cursor: pointer; font-size: 14px; }
+        .buy-btn { background: var(--success); box-shadow: 0 4px 15px rgba(0, 230, 118, 0.3); }
+        .sell-btn { background: var(--danger); box-shadow: 0 4px 15px rgba(255, 61, 113, 0.3); }
+        .portfolio-list { max-height: 200px; overflow-y: auto; margin-top: 15px; }
+        .port-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 10px; margin-bottom: 8px; font-size: 13px; }
+
+        /* 3D DICE STYLES */
+        .dice-scene { width: 120px; height: 120px; perspective: 600px; margin: 20px auto; }
+        .dice-cube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 1.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+        .dice-face { position: absolute; width: 120px; height: 120px; background: rgba(255,255,255,0.9); border: 2px solid var(--primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 60px; box-shadow: inset 0 0 20px rgba(125,95,255,0.2); backface-visibility: visible; }
+        .face-1 { transform: rotateY(0deg) translateZ(60px); }
+        .face-2 { transform: rotateY(180deg) translateZ(60px); }
+        .face-3 { transform: rotateY(-90deg) translateZ(60px); }
+        .face-4 { transform: rotateY(90deg) translateZ(60px); }
+        .face-5 { transform: rotateX(90deg) translateZ(60px); }
+        .face-6 { transform: rotateX(-90deg) translateZ(60px); }
+        .rolling { animation: diceRoll 0.2s infinite linear; }
+        @keyframes diceRoll { 0% { transform: rotateX(0) rotateY(0) rotateZ(0); } 100% { transform: rotateX(360deg) rotateY(360deg) rotateZ(360deg); } }
+
+        /* WHEEL STYLES */
+        .wheel-container { position: relative; width: 260px; height: 260px; margin: 0 auto 20px; }
+        canvas#wheel-canvas { width: 100%; height: 100%; filter: drop-shadow(0 10px 30px rgba(125,95,255,0.3)); }
+        .wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 30px solid var(--danger); filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); z-index: 5; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="food-bg"></div>
+    <canvas id="fx-canvas"></canvas>
+    <div class="flash-overlay" id="flash-overlay"></div>
+
+    <header>
+        <div class="user-info" id="header-profile">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23222'/%3E%3Ctext x='50' y='60' font-size='50' text-anchor='middle' fill='%23555'%3E🍔%3C/text%3E%3C/svg%3E" alt="Avatar" class="avatar" id="header-avatar">
+            <div class="user-text"><h3 id="header-nick" style="font-size: 14px; font-weight: 600;">Guest</h3><span class="status-dot">● Аккаунт привязан</span></div>
+        </div>
+        <div class="balance-capsule">
+            <svg class="coin-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/><path d="M10 8h4v2h-2v2h2v2h-2v4h-2V8z" fill="currentColor"/></svg>
+            <span class="balance-val" id="header-balance">250</span>
+            <button class="btn-plus" id="btn-header-plus">+</button>
+        </div>
+    </header>
+
+    <main>
+        <div id="view-games" class="view active">
+            <div class="logo" style="text-align: center; margin-bottom: 24px; font-size: 32px;"><span class="logo-food">food</span><span class="logo-up">UP</span></div>
+            <div class="game-grid" id="games-list"></div>
+        </div>
+
+        <div id="view-arena" class="view">
+            <div class="arena-header"><button class="back-btn" id="btn-back-arena">←</button><span class="arena-title" id="arena-game-title">Game</span></div>
+            <div class="game-stage" id="game-stage-area"><div class="emoji-display" id="game-emoji">🎮</div><div id="game-result-msg" class="result-text"></div></div>
+            <div id="game-controls-area"></div>
+        </div>
+
+        <div id="view-exchange" class="view">
+            <div class="arena-header"><button class="back-btn" id="btn-back-exchange">←</button><span class="arena-title">Съедобные Акции</span></div>
+            <div class="ticker-wrap"><div class="ticker" id="exchange-ticker"></div></div>
+            <div class="glass-card" style="padding: 15px;">
+                <div class="exchange-header">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span id="ex-food-icon" style="font-size:24px;">🍔</span>
+                        <div><div id="ex-food-name" style="font-weight:700; font-size:16px;">Бургер</div><div id="ex-food-price" style="color:var(--gold); font-weight:800;">100 FC</div></div>
+                    </div>
+                    <select id="ex-food-select" style="width:auto; padding:8px;"></select>
+                </div>
+                <canvas id="chart" width="400" height="150"></canvas>
+                <div class="input-group" style="margin-bottom:10px;"><input type="number" id="ex-amount" placeholder="Количество штук" value="1" min="1"></div>
+                <div class="trade-panel">
+                    <button class="trade-btn buy-btn" id="btn-buy-food">Купить</button>
+                    <button class="trade-btn sell-btn" id="btn-sell-food">Продать</button>
+                </div>
+            </div>
+            <div class="glass-card">
+                <h4 style="margin-bottom:10px; font-size:14px; color:var(--text-muted);">Мой портфель</h4>
+                <div class="portfolio-list" id="portfolio-list"><p style="font-size:12px; color:var(--text-muted); text-align:center;">Пусто</p></div>
+            </div>
+        </div>
+
+        <div id="view-bonuses" class="view">
+            <h2 style="margin-bottom: 20px; font-size: 24px;">Бонусы</h2>
+            <div class="glass-card bonus-card"><h3 style="font-size: 20px; margin-bottom: 8px;">🎁 Ежедневный подарок</h3><p style="color: var(--text-muted); margin-bottom: 20px; font-size: 14px;">+250 FC каждые 24 часа</p><button class="action-btn" id="btn-claim-daily">Забрать 250 FC</button><p id="daily-timer" style="margin-top: 12px; font-size: 12px; color: var(--danger); font-weight: 600;"></p></div>
+            <h3 style="margin-bottom: 12px; font-size: 18px;">Промокод</h3>
+            <div class="glass-card"><input type="text" id="promo-input" placeholder="Введите секретный код..." style="margin-bottom: 12px;"><button class="action-btn secondary-btn" id="btn-activate-promo">Активировать</button></div>
+        </div>
+
+        <div id="view-deposit" class="view">
+            <h2 style="margin-bottom: 24px; font-size: 24px;">Пополнить</h2>
+            <h3 style="margin-bottom: 12px; font-size: 16px; color: var(--text-muted);">Telegram Stars</h3>
+            <div class="payment-methods" style="margin-bottom: 30px;">
+                <div class="pay-card" data-stars="10"><div class="pay-icon tg-star">⭐</div><div class="pay-title">10 Stars</div><div class="pay-sub">~ 500 FC</div></div>
+                <div class="pay-card" data-stars="50"><div class="pay-icon tg-star">⭐</div><div class="pay-title">50 Stars</div><div class="pay-sub">~ 2500 FC</div></div>
+                <div class="pay-card" data-stars="100"><div class="pay-icon tg-star">⭐</div><div class="pay-title">100 Stars</div><div class="pay-sub">~ 5000 FC</div></div>
+                <div class="pay-card" data-stars="500"><div class="pay-icon tg-star">⭐</div><div class="pay-title">500 Stars</div><div class="pay-sub">~ 25000 FC</div></div>
+            </div>
+            <h3 style="margin-bottom: 12px; font-size: 16px; color: var(--text-muted);">Toncoin</h3>
+            <div class="payment-methods">
+                <div class="pay-card" data-ton="0.5"><div class="pay-icon"><div class="tg-ton">💎</div></div><div class="pay-title">0.5 TON</div><div class="pay-sub">Direct</div></div>
+                <div class="pay-card" data-ton="1.0"><div class="pay-icon"><div class="tg-ton">💎</div></div><div class="pay-title">1.0 TON</div><div class="pay-sub">Direct</div></div>
+            </div>
+        </div>
+
+        <div id="view-profile" class="view">
+            <div class="glass-card profile-card"><img src="" alt="Avatar" class="profile-avatar" id="profile-avatar"><h2 id="profile-nick" style="font-size: 22px;">User</h2><span class="badge">🔒 Ник закреплён за Telegram</span></div>
+            <div class="glass-card stats-row"><div class="stat-item"><div class="stat-val" id="stat-games">0</div><div class="stat-label">Игр</div></div><div class="stat-item"><div class="stat-val" id="stat-wins">0</div><div class="stat-label">Побед</div></div></div>
+            <div class="glass-card"><label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px;">ID Аккаунта</label><input type="text" id="profile-id" readonly style="opacity: 0.7; font-size: 14px;"></div>
+        </div>
+    </main>
+
+    <nav>
+        <div class="nav-item active" data-target="view-games"><span class="nav-icon">🍔</span><span>Игры</span></div>
+        <div class="nav-item" data-target="view-exchange"><span class="nav-icon">📈</span><span>Биржа</span></div>
+        <div class="nav-item" data-target="view-bonuses"><span class="nav-icon">🍩</span><span>Бонусы</span></div>
+        <div class="nav-item" data-target="view-profile"><span class="nav-icon">👤</span><span>Профиль</span></div>
+    </nav>
+</div>
+<div id="toast-container"></div>
+
+<script>
+    // --- FX ENGINE (Confetti & Flash) ---
+    const FX = {
+        canvas: null, ctx: null, particles: [], animId: null,
+        init() {
+            this.canvas = document.getElementById('fx-canvas');
+            this.ctx = this.canvas.getContext('2d');
+            this.resize();
+            window.addEventListener('resize', () => this.resize());
+        },
+        resize() {
+            const rect = this.canvas.parentElement.getBoundingClientRect();
+            this.canvas.width = rect.width;
+            this.canvas.height = rect.height;
+        },
+        triggerWin() {
+            const flash = document.getElementById('flash-overlay');
+            flash.className = 'flash-overlay flash-active';
+            setTimeout(() => flash.className = 'flash-overlay', 600);
+            
+            const colors = ['#7d5fff', '#00e676', '#ffaa00', '#ff3d71', '#0098ea', '#fff'];
+            for (let i = 0; i < 150; i++) {
+                this.particles.push({
+                    x: this.canvas.width / 2 + (Math.random() - 0.5) * 100,
+                    y: this.canvas.height / 2,
+                    vx: (Math.random() - 0.5) * 25,
+                    vy: (Math.random() - 1) * 25 - 5,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    size: Math.random() * 8 + 3,
+                    rotation: Math.random() * 360,
+                    rotSpeed: (Math.random() - 0.5) * 10,
+                    life: 1
+                });
+            }
+            if (!this.animId) this.animate();
+        },
+        triggerLose() {
+            const flash = document.getElementById('flash-overlay');
+            flash.className = 'flash-overlay flash-lose';
+            setTimeout(() => flash.className = 'flash-overlay', 600);
+        },
+        animate() {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.5; // gravity
+                p.rotation += p.rotSpeed;
+                p.life -= 0.01;
+                
+                if (p.life <= 0) { this.particles.splice(i, 1); return; }
+                
+                this.ctx.save();
+                this.ctx.translate(p.x, p.y);
+                this.ctx.rotate(p.rotation * Math.PI / 180);
+                this.ctx.globalAlpha = p.life;
+                this.ctx.fillStyle = p.color;
+                this.ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size * 0.6);
+                this.ctx.restore();
+            });
+            
+            if (this.particles.length > 0) {
+                this.animId = requestAnimationFrame(() => this.animate());
+            } else {
+                this.animId = null;
+            }
+        }
+    };
+
+    const AudioEngine = {
+        ctx: null,
+        init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (this.ctx.state === 'suspended') this.ctx.resume(); },
+        play(type) {
+            this.init(); if (!this.ctx) return;
+            const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+            osc.connect(gain); gain.connect(this.ctx.destination); const now = this.ctx.currentTime;
+            if (type === 'click') { osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); osc.start(now); osc.stop(now + 0.1); }
+            else if (type === 'win') { osc.type = 'sine'; osc.frequency.setValueAtTime(523, now); osc.frequency.setValueAtTime(659, now + 0.1); osc.frequency.setValueAtTime(784, now + 0.2); gain.gain.setValueAtTime(0.15, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5); osc.start(now); osc.stop(now + 0.5); }
+            else if (type === 'lose') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(300, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.3); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); osc.start(now); osc.stop(now + 0.3); }
+            else if (type === 'spin') { osc.type = 'triangle'; osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(800, now + 0.2); gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2); osc.start(now); osc.stop(now + 0.2); }
+            else if (type === 'pop') { osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.05); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); osc.start(now); osc.stop(now + 0.1); }
+            else if (type === 'tick') { osc.type = 'square'; osc.frequency.setValueAtTime(1000, now); gain.gain.setValueAtTime(0.03, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05); osc.start(now); osc.stop(now + 0.05); }
+        }
+    };
+
+    const State = {
+        user: { id: null, username: 'Guest', avatar: '', balance: 250, gamesPlayed: 0, wins: 0, usedPromos: [], lastDailyBonus: 0, portfolio: {} },
+        currentGame: null, tg: window.Telegram.WebApp, greedInterval: null, exchangeInterval: null
+    };
+
+    function init() {
+        FX.init();
+        if (State.tg) {
+            State.tg.ready(); State.tg.expand(); State.tg.setHeaderColor('#050508'); State.tg.setBackgroundColor('#050508');
+            const user = State.tg.initDataUnsafe?.user;
+            if (user) { State.user.id = user.id; State.user.username = user.username ? `@${user.username}` : `${user.first_name || ''} ${user.last_name || ''}`.trim(); if (user.photo_url) State.user.avatar = user.photo_url; }
+        }
+        loadState(); updateUI(); renderGamesList(); setupEventListeners(); checkDailyBonusTimer(); createFallingFood(); initExchange();
+    }
+
+    function saveState() { try { localStorage.setItem('foodup_v5', JSON.stringify(State.user)); } catch(e){} }
+    function loadState() { try { const d = localStorage.getItem('foodup_v5'); if(d) State.user = {...State.user, ...JSON.parse(d)}; if(!State.user.portfolio) State.user.portfolio = {}; } catch(e){} }
+
+    function updateUI() {
+        document.getElementById('header-nick').textContent = State.user.username;
+        document.getElementById('header-avatar').src = State.user.avatar || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23222'/%3E%3Ctext x='50' y='60' font-size='50' text-anchor='middle' fill='%23555'%3E🍔%3C/text%3E%3C/svg%3E";
+        document.getElementById('header-balance').textContent = Math.floor(State.user.balance);
+        document.getElementById('profile-nick').textContent = State.user.username;
+        document.getElementById('profile-avatar').src = State.user.avatar || document.getElementById('header-avatar').src;
+        document.getElementById('profile-id').value = State.user.id ? `TG ID: ${State.user.id}` : 'Demo Mode';
+        document.getElementById('stat-games').textContent = State.user.gamesPlayed;
+        document.getElementById('stat-wins').textContent = State.user.wins;
+    }
+
+    function showToast(msg, type = 'info') {
+        const container = document.getElementById('toast-container'); const toast = document.createElement('div'); toast.className = 'toast';
+        let icon = 'ℹ️'; if (type === 'success' || type === 'money') { icon = '✅'; } if (type === 'error') { icon = '❌'; }
+        toast.innerHTML = `<span>${icon}</span> <span>${msg}</span>`; container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateY(-20px)'; toast.style.transition = 'all 0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+    }
+
+    function switchView(viewId) {
+        AudioEngine.play('click');
+        if (State.greedInterval) { clearInterval(State.greedInterval); State.greedInterval = null; }
+        document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+        document.getElementById(viewId).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        const navItem = document.querySelector(`.nav-item[data-target="${viewId}"]`);
+        if (navItem) navItem.classList.add('active');
+        if (viewId === 'view-exchange') startExchangeLoop(); else stopExchangeLoop();
+    }
+
+    function createFallingFood() {
+        const bg = document.getElementById('food-bg'); const foods = ['🍔', '🍟', '🌭', '🍕', '🍩', '🍪', '🍎', '🍇', '🍉', '🍓', '🥑', '🥐'];
+        for (let i = 0; i < 20; i++) { const item = document.createElement('div'); item.className = 'falling-item'; item.textContent = foods[Math.floor(Math.random() * foods.length)]; item.style.left = Math.random() * 100 + '%'; item.style.animationDuration = (Math.random() * 10 + 10) + 's'; item.style.animationDelay = (Math.random() * 20) + 's'; item.style.fontSize = (Math.random() * 16 + 16) + 'px'; bg.appendChild(item); }
+    }
+
+    const GAMES = [
+        { id: 'foodCase', name: 'foodCase 50/50', tag: 'TOP', tagClass: 'top', icon: '🍱', desc: 'Шанс 50%. Приз до 5000 или сгоревшее', cost: 500 },
+        { id: 'greed', name: 'Жадность', tag: 'NEW', tagClass: 'new', icon: '🫧', desc: 'Удваивай ставку, но успей забрать!', cost: null },
+        { id: 'crash', name: 'Краш-Ракета', tag: 'HOT', tagClass: 'hot', icon: '🚀', desc: 'Успей забрать до краша', cost: null },
+        { id: 'slots', name: 'Слоты Фрукты', tag: '777', tagClass: 'top', icon: '🍒', desc: 'Джекпот x15 за три 7️⃣', cost: null },
+        { id: 'mines', name: 'Сапёр 1/3', tag: 'NEW', tagClass: 'new', icon: '🧁', desc: 'Найди безопасную ячейку x1.45', cost: null },
+        { id: 'coinflip', name: 'Орёл и Решка', tag: '50/50', tagClass: 'top', icon: '🍳', desc: 'Шанс 50%, выплата x1.95', cost: null },
+        { id: 'dice', name: 'Кубик Удачи', tag: 'FAST', tagClass: 'new', icon: '🎲', desc: 'Выпадет 4, 5 или 6 = x1.9', cost: null },
+        { id: 'wheel', name: 'Колесо Удачи', tag: 'LUCKY', tagClass: 'hot', icon: '🎡', desc: 'Настоящее колесо! Множитель до x5', cost: null },
+        { id: 'card', name: 'Карта > 7', tag: 'CARD', tagClass: 'top', icon: '🍕', desc: 'Карта старше 7 = x1.9', cost: null },
+        { id: 'darts', name: 'Дартс', tag: 'PRO', tagClass: 'hot', icon: '🍡', desc: 'В яблочко x2.5, в кольцо x0.5', cost: null },
+        { id: 'chests', name: '3 Сундука', tag: 'GOLD', tagClass: 'new', icon: '🥡', desc: 'Найди золото x2.8', cost: null },
+    ];
+
+    function renderGamesList() {
+        const list = document.getElementById('games-list'); list.innerHTML = '';
+        GAMES.forEach(game => {
+            const card = document.createElement('div'); card.className = 'glass-card game-card'; card.dataset.gameId = game.id;
+            const tagHtml = game.tag ? `<span class="tag ${game.tagClass}">${game.tag}</span>` : '';
+            const costText = game.cost ? `Цена: ${game.cost} FC` : 'Ставка: любая';
+            card.innerHTML = `<div class="game-row"><div class="game-icon">${game.icon}</div><div class="game-details"><div class="game-title">${game.name} ${tagHtml}</div><div class="game-desc">${game.desc}</div><div style="font-size:11px; color:var(--gold); margin-top:6px; font-weight:600;">${costText}</div></div><div class="play-arrow">›</div></div>`;
+            list.appendChild(card);
+        });
+    }
+
+    // --- FOOD EXCHANGE ENGINE ---
+    const FOODS = [
+        { id: 'burger', name: 'Бургер', icon: '🍔', price: 100, history: [] }, { id: 'pizza', name: 'Пицца', icon: '🍕', price: 150, history: [] },
+        { id: 'sushi', name: 'Суши', icon: '🍣', price: 300, history: [] }, { id: 'taco', name: 'Тако', icon: '🌮', price: 80, history: [] },
+        { id: 'hotdog', name: 'Хот-дог', icon: '🌭', price: 50, history: [] }, { id: 'donut', name: 'Пончик', icon: '🍩', price: 60, history: [] },
+        { id: 'icecream', name: 'Мороженое', icon: '🍦', price: 90, history: [] }, { id: 'ramen', name: 'Рамен', icon: '🍜', price: 200, history: [] },
+        { id: 'steak', name: 'Стейк', icon: '🥩', price: 500, history: [] }, { id: 'shrimp', name: 'Креветки', icon: '🦐', price: 400, history: [] },
+        { id: 'avocado', name: 'Авокадо', icon: '🥑', price: 120, history: [] }, { id: 'broccoli', name: 'Брокколи', icon: '🥦', price: 40, history: [] },
+        { id: 'croissant', name: 'Круассан', icon: '🥐', price: 70, history: [] }, { id: 'cheese', name: 'Сыр', icon: '🧀', price: 110, history: [] },
+        { id: 'egg', name: 'Яйцо', icon: '🥚', price: 20, history: [] }, { id: 'bacon', name: 'Бекон', icon: '🥓', price: 130, history: [] }
+    ];
+    let currentFoodIdx = 0;
+
+    function initExchange() {
+        const select = document.getElementById('ex-food-select');
+        FOODS.forEach((f, i) => {
+            f.history = Array.from({length: 30}, () => f.price * (0.9 + Math.random() * 0.2));
+            const opt = document.createElement('option'); opt.value = i; opt.textContent = `${f.icon} ${f.name}`; select.appendChild(opt);
+        });
+        updateExchangeUI(); renderTicker();
+    }
+    function renderTicker() {
+        const ticker = document.getElementById('exchange-ticker'); let html = '';
+        for(let k=0; k<2; k++) { FOODS.forEach(f => { const prev = f.history[f.history.length - 2] || f.price; const change = ((f.price - prev) / prev * 100).toFixed(1); const cls = change >= 0 ? 'ticker-up' : 'ticker-down'; const arrow = change >= 0 ? '▲' : '▼'; html += `<div class="ticker-item ${cls}">${f.icon} ${f.name}: ${Math.floor(f.price)} FC <small>${arrow}${Math.abs(change)}%</small></div>`; }); }
+        ticker.innerHTML = html;
+    }
+    function updateExchangeUI() {
+        const f = FOODS[currentFoodIdx];
+        document.getElementById('ex-food-icon').textContent = f.icon; document.getElementById('ex-food-name').textContent = f.name; document.getElementById('ex-food-price').textContent = `${Math.floor(f.price)} FC`;
+        drawChart(f.history); updatePortfolio();
+    }
+    function drawChart(history) {
+        const canvas = document.getElementById('chart'); if(!canvas) return; const ctx = canvas.getContext('2d'); const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * 2; canvas.height = rect.height * 2; ctx.scale(2, 2); const w = rect.width, h = rect.height; ctx.clearRect(0, 0, w, h);
+        const min = Math.min(...history) * 0.95; const max = Math.max(...history) * 1.05; const stepX = w / (history.length - 1);
+        ctx.beginPath(); ctx.moveTo(0, h - ((history[0] - min) / (max - min)) * h);
+        for(let i=1; i<history.length; i++) ctx.lineTo(i * stepX, h - ((history[i] - min) / (max - min)) * h);
+        const isUp = history[history.length-1] >= history[0]; ctx.strokeStyle = isUp ? '#00e676' : '#ff3d71'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, isUp ? 'rgba(0, 230, 118, 0.3)' : 'rgba(255, 61, 113, 0.3)'); grad.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = grad; ctx.fill();
+    }
+    function updatePortfolio() {
+        const list = document.getElementById('portfolio-list'); list.innerHTML = ''; let hasItems = false;
+        for (const id in State.user.portfolio) { const amount = State.user.portfolio[id]; if (amount > 0) { hasItems = true; const f = FOODS.find(x => x.id === id); const val = Math.floor(f.price * amount); const item = document.createElement('div'); item.className = 'port-item'; item.innerHTML = `<span>${f.icon} ${f.name} x${amount}</span><span style="color:var(--gold); font-weight:700;">${val} FC</span>`; list.appendChild(item); } }
+        if (!hasItems) list.innerHTML = '<p style="font-size:12px; color:var(--text-muted); text-align:center;">Пусто</p>';
+    }
+    function tickExchange() { FOODS.forEach(f => { const volatility = 0.08; const change = 1 + (Math.random() * volatility * 2 - volatility); f.price = Math.max(5, f.price * change); f.history.push(f.price); if (f.history.length > 40) f.history.shift(); }); updateExchangeUI(); renderTicker(); }
+    function startExchangeLoop() { if (!State.exchangeInterval) State.exchangeInterval = setInterval(tickExchange, 1500); }
+    function stopExchangeLoop() { if (State.exchangeInterval) { clearInterval(State.exchangeInterval); State.exchangeInterval = null; } }
+
+    // --- ARENA & GAME LOGIC ---
+    function openArena(gameId) {
+        const game = GAMES.find(g => g.id === gameId); if (!game) return;
+        State.currentGame = game; document.getElementById('arena-game-title').textContent = game.name;
+        const stage = document.getElementById('game-stage-area');
+        const controls = document.getElementById('game-controls-area'); controls.innerHTML = '';
+        
+        if (game.id === 'wheel') {
+            stage.innerHTML = `
+                <div class="wheel-container">
+                    <div class="wheel-pointer"></div>
+                    <canvas id="wheel-canvas" width="520" height="520"></canvas>
+                </div>
+                <div id="game-result-msg" class="result-text"></div>
+            `;
+            drawWheel(0);
+        } else if (game.id === 'dice') {
+            stage.innerHTML = `
+                <div class="dice-scene">
+                    <div class="dice-cube" id="dice-cube">
+                        <div class="dice-face face-1">⚀</div>
+                        <div class="dice-face face-2">⚁</div>
+                        <div class="dice-face face-3">⚂</div>
+                        <div class="dice-face face-4">⚃</div>
+                        <div class="dice-face face-5">⚄</div>
+                        <div class="dice-face face-6">⚅</div>
+                    </div>
+                </div>
+                <div id="game-result-msg" class="result-text"></div>
+            `;
+        } else {
+            stage.innerHTML = `<div class="emoji-display" id="game-emoji">${game.icon}</div><div id="game-result-msg" class="result-text"></div>`;
+        }
+
+        if (game.id === 'foodCase') controls.innerHTML += `<div style="text-align:center; margin-bottom:16px; color:var(--gold); font-weight:700;">Фикс. цена: 500 FC</div>`;
+        else if (game.id !== 'greed') controls.innerHTML += `<input type="number" id="bet-amount" placeholder="Сумма ставки (FC)" value="50" min="10" style="margin-bottom: 16px;">`;
+        else controls.innerHTML += `<input type="number" id="bet-amount" placeholder="Начальная ставка" value="50" min="10" style="margin-bottom: 16px;">`;
+
+        if (game.id === 'crash') controls.innerHTML += `<input type="number" id="crash-target" placeholder="Целевой X (1.2 - 20)" value="2.0" step="0.1" style="margin-bottom: 16px;">`;
+        if (game.id === 'mines' || game.id === 'chests') {
+            const grid = document.createElement('div'); grid.className = 'grid-3'; grid.id = 'game-grid';
+            for(let i=0; i<3; i++) grid.innerHTML += `<div class="grid-cell" data-idx="${i}">❓</div>`;
+            controls.appendChild(grid);
+        }
+
+        const btn = document.createElement('button'); btn.className = 'action-btn'; btn.id = 'btn-play-action';
+        if (game.id === 'foodCase') btn.textContent = 'Открыть кейс 🍱';
+        else if (game.id === 'greed') btn.textContent = 'Начать игру 🫧';
+        else if (game.id === 'mines' || game.id === 'chests') btn.textContent = 'Выбрать ячейку';
+        else if (game.id === 'wheel') btn.textContent = 'Крутить колесо 🎡';
+        else btn.textContent = 'Играть 🎮';
+        controls.appendChild(btn);
+        switchView('view-arena');
+    }
+
+    function processGameResult(bet, multiplier, isWin, customMsg = '') {
+        const msgEl = document.getElementById('game-result-msg');
+        const emojiEl = document.getElementById('game-emoji');
+        if(emojiEl) { emojiEl.classList.remove('shake'); void emojiEl.offsetWidth; emojiEl.classList.add('shake'); }
+        
+        setTimeout(() => {
+            const profit = Math.floor(bet * multiplier);
+            if (isWin) { 
+                State.user.balance += profit; State.user.wins++; 
+                if(msgEl) { msgEl.textContent = customMsg || `+${profit} FC`; msgEl.className = 'result-text win'; }
+                showToast(`Победа! +${profit} FC`, 'money'); 
+                FX.triggerWin(); AudioEngine.play('win');
+            } else { 
+                State.user.balance -= bet; 
+                if(msgEl) { msgEl.textContent = customMsg || `-${bet} FC`; msgEl.className = 'result-text lose'; }
+                showToast(`Проигрыш -${bet} FC`, 'error'); 
+                FX.triggerLose(); AudioEngine.play('lose');
+            }
+            State.user.gamesPlayed++; saveState(); updateUI();
+        }, 400);
+    }
+
+    // --- WHEEL OF FORTUNE LOGIC ---
+    const WHEEL_SECTORS = [
+        { label: 'x0', mult: 0, color: '#1a1a2e' },
+        { label: 'x0.5', mult: 0.5, color: '#ff3d71' },
+        { label: 'x1.2', mult: 1.2, color: '#7d5fff' },
+        { label: 'x2.0', mult: 2.0, color: '#0098ea' },
+        { label: 'x5.0', mult: 5.0, color: '#00e676' }
+    ];
+    let wheelAngle = 0;
+
+    function drawWheel(angle) {
+        const canvas = document.getElementById('wheel-canvas');
+        if(!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const cx = canvas.width / 2, cy = canvas.height / 2, r = cx - 20;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle * Math.PI / 180);
+        
+        const arc = (2 * Math.PI) / WHEEL_SECTORS.length;
+        WHEEL_SECTORS.forEach((sec, i) => {
+            const a = i * arc;
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, a, a + arc); ctx.closePath();
+            ctx.fillStyle = sec.color; ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 4; ctx.stroke();
+            
+            ctx.save(); ctx.rotate(a + arc / 2); ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+            ctx.font = 'bold 40px -apple-system'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 5;
+            ctx.fillText(sec.label, r * 0.65, 10); ctx.restore();
+        });
+        ctx.restore();
+    }
+
+    function spinWheel(bet) {
+        if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error');
+        const btn = document.getElementById('btn-play-action'); if(btn) btn.disabled = true;
+        AudioEngine.play('spin');
+        
+        const targetSector = Math.floor(Math.random() * WHEEL_SECTORS.length);
+        const sectorAngle = 360 / WHEEL_SECTORS.length;
+        // Calculate exact angle to land on target sector under the pointer (top)
+        const extraSpins = 360 * (5 + Math.floor(Math.random() * 3));
+        const targetAngle = extraSpins + (360 - (targetSector * sectorAngle + sectorAngle / 2));
+        
+        const startAngle = wheelAngle;
+        const totalRotation = targetAngle - (startAngle % 360) + 360 * 5;
+        const duration = 4000;
+        const startTime = Date.now();
+
+        function animateSpin() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Cubic ease out
+            const ease = 1 - Math.pow(1 - progress, 3);
+            
+            wheelAngle = startAngle + totalRotation * ease;
+            drawWheel(wheelAngle);
+            
+            if (progress < 1) {
+                if(Math.random() < 0.2) AudioEngine.play('tick');
+                requestAnimationFrame(animateSpin);
+            } else {
+                const sec = WHEEL_SECTORS[targetSector];
+                const isWin = sec.mult >= 1.0;
+                processGameResult(bet, sec.mult, isWin, `Сектор: ${sec.label}`);
+                if(btn) btn.disabled = false;
+            }
+        }
+        animateSpin();
+    }
+
+    // --- DICE 3D LOGIC ---
+    function rollDice3D(bet) {
+        if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error');
+        const btn = document.getElementById('btn-play-action'); if(btn) btn.disabled = true;
+        const cube = document.getElementById('dice-cube');
+        AudioEngine.play('spin');
+        
+        const roll = Math.floor(Math.random() * 6) + 1;
+        const win = roll >= 4;
+        
+        // Map faces to rotations
+        const rotations = {
+            1: 'rotateX(0deg) rotateY(0deg)',
+            2: 'rotateX(0deg) rotateY(180deg)',
+            3: 'rotateX(0deg) rotateY(90deg)',
+            4: 'rotateX(0deg) rotateY(-90deg)',
+            5: 'rotateX(-90deg) rotateY(0deg)',
+            6: 'rotateX(90deg) rotateY(0deg)'
+        };
+
+        // Add random full spins for effect
+        const spinsX = 360 * (3 + Math.floor(Math.random() * 3));
+        const spinsY = 360 * (3 + Math.floor(Math.random() * 3));
+        
+        cube.style.transition = 'none';
+        cube.classList.add('rolling');
+        
+        setTimeout(() => {
+            cube.classList.remove('rolling');
+            cube.style.transition = 'transform 1.5s cubic-bezier(0.2, 0.8, 0.2, 1)';
+            cube.style.transform = `${rotations[roll]} rotateX(${spinsX}deg) rotateY(${spinsY}deg)`;
+            // Wait for animation to finish
+            setTimeout(() => {
+                processGameResult(bet, win ? 1.9 : 0, win, `Выпало: ${roll}`);
+                if(btn) btn.disabled = false;
+            }, 1600);
+        }, 800);
+    }
+
+    // --- GREED GAME LOGIC ---
+    function startGreed(bet) {
+        if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error');
+        State.user.balance -= bet; saveState(); updateUI();
+        
+        const stage = document.getElementById('game-stage-area');
+        const controls = document.getElementById('game-controls-area');
+        controls.innerHTML = '';
+        
+        let currentMult = 1;
+        let clicks = 0;
+        let isAlive = true;
+        
+        stage.innerHTML = `
+            <div class="greed-info">Текущая ставка: <span style="color:var(--gold)">${bet} FC</span></div>
+            <div class="greed-multiplier" id="greed-mult">x1</div>
+            <div class="greed-circle pulse" id="greed-btn">ЖМИ!</div>
+            <div id="game-result-msg" class="result-text"></div>
+        `;
+
+        const takeBtn = document.createElement('button');
+        takeBtn.className = 'action-btn'; takeBtn.id = 'btn-greed-take'; takeBtn.textContent = 'ЗАБРАТЬ 💰';
+        controls.appendChild(takeBtn);
+
+        window._greedState = { isAlive, bet, currentMult, clicks, takeBtn };
+    }
+
+    function handleGreedClick() {
+        const gs = window._greedState;
+        if (!gs || !gs.isAlive) return;
+
+        gs.clicks++;
+        gs.currentMult *= 2;
+        AudioEngine.play('pop');
+        
+        document.getElementById('greed-mult').textContent = `x${gs.currentMult}`;
+        
+        // ШАНС СГОРЕТЬ: Начинается с 8% и экспоненциально растет с каждым кликом
+        // Формула: 1 - (0.92 ^ clicks)
+        const burnChance = 1 - Math.pow(0.92, gs.clicks);
+        
+        if (Math.random() < burnChance) {
+            // СГОРЕЛ!
+            gs.isAlive = false;
+            AudioEngine.play('lose');
+            const circle = document.getElementById('greed-btn');
+            if(circle) { 
+                circle.textContent = 'СГОРЕЛО! 🔥'; 
+                circle.style.background = 'radial-gradient(circle, var(--danger) 0%, #4a0000 100%)'; 
+                circle.classList.remove('pulse'); 
+                circle.style.boxShadow = '0 0 60px rgba(255, 61, 113, 0.8)';
+            }
+            const msg = document.getElementById('game-result-msg');
+            if(msg) { msg.textContent = `-${gs.bet} FC`; msg.className = 'result-text lose'; }
+            State.user.gamesPlayed++;
+            showToast('Ты сгорел от жадности!', 'error');
+            FX.triggerLose();
+            saveState(); updateUI();
+            if(gs.takeBtn) gs.takeBtn.disabled = true;
+        } else {
+            // Выжил, меняем цвет круга к красному по мере роста риска
+            const dangerLevel = Math.min(burnChance * 1.5, 1);
+            const r = Math.floor(125 + (255 - 125) * dangerLevel);
+            const g = Math.floor(95 - 95 * dangerLevel);
+            const b = Math.floor(255 - 142 * dangerLevel);
+            const circle = document.getElementById('greed-btn');
+            if(circle) circle.style.background = `radial-gradient(circle, rgb(${r},${g},${b}) 0%, #2a1a4a 100%)`;
+        }
+    }
+
+    function handleGreedTake() {
+        const gs = window._greedState;
+        if (gs && gs.isAlive) {
+            gs.isAlive = false;
+            const profit = Math.floor(gs.bet * gs.currentMult);
+            State.user.balance += profit;
+            State.user.wins++; State.user.gamesPlayed++;
+            
+            const circle = document.getElementById('greed-btn');
+            if(circle) { circle.textContent = 'ЗАБРАЛ! 💰'; circle.style.background = 'radial-gradient(circle, var(--success) 0%, #004a00 100%)'; circle.classList.remove('pulse'); }
+            const msg = document.getElementById('game-result-msg');
+            if(msg) { msg.textContent = `+${profit} FC`; msg.className = 'result-text win'; }
+            gs.takeBtn.disabled = true;
+            showToast(`Успел забрать ${profit} FC!`, 'money');
+            FX.triggerWin(); AudioEngine.play('win');
+            saveState(); updateUI();
+        }
+    }
+
+    // --- OTHER GAME LOGICS ---
+    const GameLogic = {
+        foodCase: () => {
+            const cost = 500; if (State.user.balance < cost) return showToast('Недостаточно средств', 'error');
+            AudioEngine.play('spin'); const isWin = Math.random() > 0.5;
+            const emojiEl = document.getElementById('game-emoji'); const msgEl = document.getElementById('game-result-msg');
+            emojiEl.classList.remove('shake'); void emojiEl.offsetWidth; emojiEl.classList.add('shake');
+            setTimeout(() => {
+                if (isWin) {
+                    const prize = Math.floor(Math.random() * (5000 - 500 + 1)) + 500;
+                    State.user.balance -= cost; State.user.balance += prize; State.user.wins++;
+                    emojiEl.textContent = '🍱'; msgEl.textContent = `Джекпот: +${prize} FC`; msgEl.className = 'result-text win';
+                    showToast(`Свежая еда! +${prize} FC`, 'money'); FX.triggerWin(); AudioEngine.play('win');
+                } else {
+                    State.user.balance -= cost;
+                    emojiEl.textContent = '🤢'; msgEl.textContent = `Сгорело... -${cost} FC`; msgEl.className = 'result-text lose';
+                    showToast('Попалась протухшая еда!', 'error'); FX.triggerLose(); AudioEngine.play('lose');
+                }
+                State.user.gamesPlayed++; saveState(); updateUI();
+            }, 500);
+        },
+        crash: (bet, target) => {
+            if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error');
+            AudioEngine.play('spin');
+            const crashPoint = (Math.random() < 0.03) ? 1.0 : (1 / (1 - Math.random())); 
+            const finalPoint = Math.min(crashPoint, 20).toFixed(2);
+            document.getElementById('game-emoji').textContent = '🚀';
+            setTimeout(() => { const win = parseFloat(finalPoint) >= target; document.getElementById('game-result-msg').textContent = `Crash @ ${finalPoint}x`; processGameResult(bet, win ? target : 0, win); }, 1500);
+        },
+        slots: (bet) => {
+            if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error');
+            AudioEngine.play('spin');
+            const symbols = ['🍒', '🍋', '🍇', '🔔', '7️⃣'];
+            const r1 = symbols[Math.floor(Math.random()*symbols.length)], r2 = symbols[Math.floor(Math.random()*symbols.length)], r3 = symbols[Math.floor(Math.random()*symbols.length)];
+            document.getElementById('game-stage-area').innerHTML = `<div class="slots-row"><div class="slot-reel">${r1}</div><div class="slot-reel">${r2}</div><div class="slot-reel">${r3}</div></div><div id="game-result-msg" class="result-text"></div>`;
+            let mult = 0;
+            if (r1 === '7️⃣' && r2 === '7️⃣' && r3 === '7️⃣') mult = 15; else if (r1 === r2 && r2 === r3) mult = 5; else if (r1 === r2 || r2 === r3 || r1 === r3) mult = 1.4;
+            processGameResult(bet, mult, mult > 0);
+        },
+        mines: (bet) => {
+            if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error');
+            const cells = document.querySelectorAll('#game-grid .grid-cell'); const bombIdx = Math.floor(Math.random() * 3);
+            document.getElementById('btn-play-action').style.display = 'none';
+            cells.forEach(cell => { cell.onclick = (e) => { e.stopPropagation(); AudioEngine.play('click'); const idx = parseInt(cell.dataset.idx); if (idx === bombIdx) { cell.textContent = '💣'; cell.style.background = 'rgba(255, 61, 113, 0.2)'; processGameResult(bet, 0, false); } else { cell.textContent = '🧁'; cell.style.background = 'rgba(0, 230, 118, 0.2)'; processGameResult(bet, 1.45, true); } cells.forEach(c => c.onclick = null); }; });
+        },
+        coinflip: (bet) => { if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error'); AudioEngine.play('spin'); const win = Math.random() > 0.5; document.getElementById('game-emoji').textContent = win ? '🦅' : '🍳'; processGameResult(bet, win ? 1.95 : 0, win); },
+        card: (bet) => { if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error'); AudioEngine.play('spin'); const val = Math.floor(Math.random() * 13) + 2; const win = val > 7; const suits = ['♠','♥','♦','♣']; const suit = suits[Math.floor(Math.random()*4)]; const display = val === 11 ? 'J' : val === 12 ? 'Q' : val === 13 ? 'K' : val === 14 ? 'A' : val; document.getElementById('game-emoji').textContent = `${display}${suit}`; document.getElementById('game-emoji').style.color = (suit === '♥' || suit === '♦') ? 'var(--danger)' : 'white'; processGameResult(bet, win ? 1.9 : 0, win); },
+        darts: (bet) => { if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error'); AudioEngine.play('spin'); const rand = Math.random(); let mult = 0; if (rand < 0.35) mult = 2.5; else if (rand < 0.65) mult = 0.5; document.getElementById('game-emoji').textContent = '🍡'; processGameResult(bet, mult, mult > 1); },
+        chests: (bet) => {
+            if (bet <= 0 || State.user.balance < bet) return showToast('Ошибка ставки', 'error');
+            const cells = document.querySelectorAll('#game-grid .grid-cell'); const goldIdx = Math.floor(Math.random() * 3);
+            document.getElementById('btn-play-action').style.display = 'none';
+            cells.forEach(cell => { cell.onclick = (e) => { e.stopPropagation(); AudioEngine.play('click'); const idx = parseInt(cell.dataset.idx); if (idx === goldIdx) { cell.textContent = '👑'; cell.style.background = 'rgba(255, 170, 0, 0.2)'; processGameResult(bet, 2.8, true); } else { cell.textContent = '🕸️'; processGameResult(bet, 0, false); } cells.forEach(c => c.onclick = null); }; });
+        }
+    };
+
+    // --- EVENT DELEGATION (STRICT) ---
+    function setupEventListeners() {
+        document.addEventListener('click', (e) => {
+            AudioEngine.init();
+            const target = e.target.closest('[data-target]');
+            if (target) { switchView(target.dataset.target); return; }
+            if (e.target.closest('#header-profile')) { switchView('view-profile'); return; }
+            if (e.target.closest('#btn-header-plus')) { switchView('view-deposit'); return; }
+            const gameCard = e.target.closest('.game-card');
+            if (gameCard) { openArena(gameCard.dataset.gameId); return; }
+            if (e.target.closest('#btn-back-arena') || e.target.closest('#btn-back-exchange')) { switchView('view-games'); return; }
+
+            if (e.target.closest('#greed-btn')) { handleGreedClick(); return; }
+            if (e.target.closest('#btn-greed-take')) { handleGreedTake(); return; }
+
+            if (e.target.closest('#btn-play-action')) {
+                const game = State.currentGame; if (!game) return; AudioEngine.play('click');
+                const btn = document.getElementById('btn-play-action');
+                
+                if (game.id === 'foodCase') { GameLogic.foodCase(); return; }
+                if (game.id === 'greed') { const bet = parseInt(document.getElementById('bet-amount').value); startGreed(bet); return; }
+                if (game.id === 'wheel') { const bet = parseInt(document.getElementById('bet-amount').value); spinWheel(bet); return; }
+                if (game.id === 'dice') { const bet = parseInt(document.getElementById('bet-amount').value); rollDice3D(bet); return; }
+                
+                if (game.id === 'mines' || game.id === 'chests') {
+                    const bet = parseInt(document.getElementById('bet-amount').value);
+                    if (isNaN(bet) || bet <= 0) return showToast('Введите ставку', 'error');
+                    if (State.user.balance < bet) return showToast('Мало FC', 'error');
+                    GameLogic[game.id](bet); return;
+                }
+                const bet = parseInt(document.getElementById('bet-amount').value);
+                if (isNaN(bet) || bet <= 0) return showToast('Введите ставку', 'error');
+                if (State.user.balance < bet) return showToast('Мало FC', 'error');
+                if (game.id === 'crash') { GameLogic.crash(bet, parseFloat(document.getElementById('crash-target').value)); }
+                else if (GameLogic[game.id]) { GameLogic[game.id](bet); }
+                return;
+            }
+
+            if (e.target.closest('#btn-buy-food')) {
+                const f = FOODS[currentFoodIdx]; const amount = parseInt(document.getElementById('ex-amount').value) || 1; const cost = Math.floor(f.price * amount);
+                if (State.user.balance < cost) return showToast('Недостаточно FC', 'error');
+                State.user.balance -= cost; State.user.portfolio[f.id] = (State.user.portfolio[f.id] || 0) + amount;
+                AudioEngine.play('win'); showToast(`Куплено ${amount}x ${f.icon} за ${cost} FC`, 'success'); saveState(); updateUI(); updatePortfolio(); return;
+            }
+            if (e.target.closest('#btn-sell-food')) {
+                const f = FOODS[currentFoodIdx]; const amount = parseInt(document.getElementById('ex-amount').value) || 1; const owned = State.user.portfolio[f.id] || 0;
+                if (owned < amount) return showToast(`У тебя только ${owned} шт.`, 'error');
+                const revenue = Math.floor(f.price * amount); State.user.balance += revenue; State.user.portfolio[f.id] -= amount;
+                AudioEngine.play('win'); showToast(`Продано ${amount}x ${f.icon} за ${revenue} FC`, 'success'); saveState(); updateUI(); updatePortfolio(); return;
+            }
+            if (e.target.closest('#btn-claim-daily')) {
+                const now = Date.now(); const oneDay = 24 * 60 * 60 * 1000;
+                if (now - State.user.lastDailyBonus > oneDay) { State.user.balance += 250; State.user.lastDailyBonus = now; saveState(); updateUI(); showToast('+250 FC получено!', 'money'); FX.triggerWin(); }
+                else { showToast('Бонус еще недоступен', 'error'); } return;
+            }
+            if (e.target.closest('#btn-activate-promo')) {
+                const code = document.getElementById('promo-input').value.trim().toUpperCase();
+                const promos = { 'START': 500, 'FOODUP': 1000, 'VIP2026': 2500 };
+                if (promos[code] && !State.user.usedPromos.includes(code)) { State.user.balance += promos[code]; State.user.usedPromos.push(code); saveState(); updateUI(); showToast(`Промокод активирован! +${promos[code]} FC`, 'money'); FX.triggerWin(); document.getElementById('promo-input').value = ''; }
+                else if (State.user.usedPromos.includes(code)) { showToast('Код уже использован', 'error'); }
+                else { showToast('Неверный код', 'error'); } return;
+            }
+            const payCard = e.target.closest('.pay-card');
+            if (payCard) {
+                const amount = payCard.dataset.stars || payCard.dataset.ton; const type = payCard.dataset.stars ? 'Stars' : 'TON';
+                AudioEngine.play('click'); showToast(`Запрос на оплату ${amount} ${type}...`, 'info');
+                setTimeout(() => { const reward = payCard.dataset.stars ? parseInt(payCard.dataset.stars) * 50 : parseFloat(payCard.dataset.ton) * 5000; State.user.balance += reward; saveState(); updateUI(); showToast(`Оплата прошла! +${reward} FC`, 'money'); FX.triggerWin(); }, 2000);
+                return;
+            }
+        });
+
+        document.getElementById('ex-food-select').addEventListener('change', (e) => { currentFoodIdx = parseInt(e.target.value); updateExchangeUI(); });
+    }
+
+    function checkDailyBonusTimer() {
+        setInterval(() => {
+            const timerEl = document.getElementById('daily-timer'); const btn = document.getElementById('btn-claim-daily');
+            const now = Date.now(); const diff = now - State.user.lastDailyBonus; const oneDay = 24 * 60 * 60 * 1000;
+            if (diff < oneDay) { const remaining = oneDay - diff; const h = Math.floor(remaining / 3600000); const m = Math.floor((remaining % 3600000) / 60000); timerEl.textContent = `Доступно через: ${h}ч ${m}м`; btn.disabled = true; btn.style.opacity = 0.5; }
+            else { timerEl.textContent = ''; btn.disabled = false; btn.style.opacity = 1; }
+        }, 1000);
+    }
+
+    init();
+</script>
+</body>
+</html>

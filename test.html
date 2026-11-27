@@ -1,0 +1,18 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>foodUP test</title></head>
+<body style="background:#050508;color:#fff;font-family:sans-serif;padding:20px">
+<h3>Тест сервера foodUP</h3>
+<pre id="out" style="white-space:pre-wrap;background:#12121a;padding:14px;border-radius:12px">Проверяю...</pre>
+<script>
+const API='https://foodup-api.andrey-kurbanov14.workers.dev';
+(async()=>{
+  const out=document.getElementById('out');
+  try{
+    const r=await fetch(API+'/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({route:'sync',data:{},initData:''})});
+    const t=await r.text();
+    out.textContent='HTTP '+r.status+'\n'+t.slice(0,600);
+  }catch(e){
+    out.textContent='FETCH FAILED: '+e.message+'\n=> воркер падает (1101) или недоступен / без CORS';
+  }
+})();
+</script></body></html>
